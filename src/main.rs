@@ -22,31 +22,33 @@ struct Options {
 }
 
 fn main() {
-    let opt = Options::from_args();
+    match main_r() {
+        Ok(()) => std::process::exit(0),
+        Err(err) => {
+            eprintln!("Error: {:?}", err);
+            std::process::exit(1);
+        }
+    }
+}
 
-    if opt.version {
+fn main_r() -> anyhow::Result<()> {
+    let options = Options::from_args();
+
+    if options.version {
         println!("Version {}", VERSION);
     }
 
-    if opt.list_files {
-        if let Some(input_dir) = opt.input_dir {
-            let mut paths: Vec<(FileType, PathBuf)> = vec![];
-            match find_input_files(input_dir, &mut paths) {
-                Ok(()) => {
-                    for (_, path) in paths {
-                        if let Some(path_str) = path.to_str() {
-                            println!("{}", path_str)
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error scanning files: {:?}", e);
-                }
+    if options.list_files {
+        let paths = get_input_files(options)?;
+
+        for (_, path) in paths {
+            if let Some(path_str) = path.to_str() {
+                println!("{}", path_str)
             }
-        } else {
-            eprintln!("Please supply <path-dir>.")
         }
     }
+
+    Ok(())
 }
 
 enum FileType {
@@ -54,25 +56,42 @@ enum FileType {
     Tgz,
 }
 
+fn get_input_files(options: Options) -> anyhow::Result<Vec<(FileType, PathBuf)>> {
+    if let Some(input_dir) = options.input_dir {
+        let files = find_input_files(input_dir)?;
+        return Ok(files);
+    } else {
+        return Err(anyhow::format_err!("Please supply <input-files>"));
+    }
+}
+
 /// Return list of relevant files from directory.
-pub(crate) fn find_input_files(
-    input_dir: std::path::PathBuf,
-    result: &mut Vec<(FileType, PathBuf)>,
-) -> Result<(), std::io::Error> {
-    for entry in fs::read_dir(input_dir)? {
-        let path = entry?.path();
-        if path.is_file() {
-            if let Some(path_str) = path.to_str() {
-                if path_str.ends_with(".json.gz") {
-                    result.push((FileType::JsonGz, path));
-                } else if path_str.ends_with(".tgz") {
-                    result.push((FileType::Tgz, path));
+fn find_input_files(input_dir: std::path::PathBuf) -> anyhow::Result<Vec<(FileType, PathBuf)>> {
+    let mut paths: Vec<(FileType, PathBuf)> = vec![];
+
+    fn r(
+        input_dir: std::path::PathBuf,
+        paths: &mut Vec<(FileType, PathBuf)>,
+    ) -> anyhow::Result<()> {
+        for entry in fs::read_dir(input_dir)? {
+            let path = entry?.path();
+            if path.is_file() {
+                if let Some(path_str) = path.to_str() {
+                    if path_str.ends_with(".json.gz") {
+                        paths.push((FileType::JsonGz, path));
+                    } else if path_str.ends_with(".tgz") {
+                        paths.push((FileType::Tgz, path));
+                    }
                 }
+            } else if path.is_dir() {
+                r(path, paths)?;
             }
-        } else if path.is_dir() {
-            find_input_files(path, result)?;
         }
+
+        Ok(())
     }
 
-    Ok(())
+    r(input_dir, &mut paths)?;
+
+    Ok(paths)
 }
