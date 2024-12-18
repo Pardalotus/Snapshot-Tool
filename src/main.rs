@@ -81,11 +81,12 @@ fn main_r() -> anyhow::Result<()> {
 
 fn main_list_files(options: &Options) -> Result<(), anyhow::Error> {
     let (_, paths) = expect_input_files(options)?;
-    Ok(for path in paths {
+    for path in paths {
         if let Some(path_str) = path.to_str() {
             println!("{}", path_str)
         }
-    })
+    };
+    Ok(())
 }
 
 fn main_count_records(options: &Options) -> Result<(), anyhow::Error> {
@@ -110,7 +111,7 @@ fn main_count_records(options: &Options) -> Result<(), anyhow::Error> {
 
 fn main_output_file(options: &Options, output_file: &PathBuf) -> Result<(), anyhow::Error> {
     let verbose = options.verbose;
-    let (input_dir, paths) = expect_input_files(&options)?;
+    let (input_dir, paths) = expect_input_files(options)?;
     if output_file.starts_with(&input_dir) {
         eprint!(
             "Output file {:?} can't be in the input directory {:?}",
@@ -135,10 +136,10 @@ fn main_output_file(options: &Options, output_file: &PathBuf) -> Result<(), anyh
 /// Error if no option supplied.
 fn expect_input_files(options: &Options) -> anyhow::Result<(PathBuf, Vec<PathBuf>)> {
     if let Some(ref input_dir) = options.input_dir {
-        let files = find_input_files(&input_dir)?;
-        return Ok((input_dir.clone(), files));
+        let files = find_input_files(input_dir)?;
+        Ok((input_dir.clone(), files))
     } else {
-        return Err(anyhow::format_err!("Please supply <input-files>"));
+        Err(anyhow::format_err!("Please supply <input-files>"))
     }
 }
 

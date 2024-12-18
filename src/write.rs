@@ -17,7 +17,7 @@ pub(crate) fn write_chan_to_json_gz(
     let mut count: usize = 0;
     for entry in rx.iter() {
         serde_json::to_writer(&mut writer, &entry)?;
-        writer.write(b"\n")?;
+        writer.write_all(b"\n")?;
 
         count += 1;
         if verbose && count % 10000 == 0 {

@@ -17,7 +17,7 @@ pub(crate) fn read_paths_to_channel(
     tx: SyncSender<Value>,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    for ref path in paths.iter() {
+    for path in paths.iter() {
         // path::ends_with comparison for path doesn't work for sub-path-component chunks.
         // path::extension only takes the lats extension files so is unsuitbale for `.tar.gz`.
         if let Some(path_str) = path.to_str() {
@@ -78,7 +78,7 @@ fn read_json_gz_to_channel(
     let deserialized: Value = serde_json::from_reader(json)?;
 
     // Crossref files have a top-level key "items" containing items in that snapshot.
-    if let Some(items) = deserialized.get("items").map(|x| x.as_array()).flatten() {
+    if let Some(items) = deserialized.get("items").and_then(|x| x.as_array()) {
         let mut count: usize = 0;
         for item in items {
             // We're splitting the document into parts, so need to make a copy of this subtree.
@@ -121,8 +121,7 @@ fn read_tgz_to_channel(
 
         if entry_path
             .file_name()
-            .map(|x| x.to_str())
-            .flatten()
+            .and_then(|x| x.to_str())
             .map(|x| x.ends_with(".jsonl"))
             .unwrap_or(false)
         {
