@@ -6,6 +6,14 @@ The Crossref Public Data File is available here: <https://www.crossref.org/learn
 
 The DataCite Public Data File is available here: <https://support.datacite.org/docs/datacite-public-data-file>
 
+It can:
+ - count the number of metadata records
+ - combine multiple snapshot files into one single file
+
+## Installation
+
+Run `cargo build --release`. The binary is available in the `./target/release` directory.
+
 ## Input
 
 Supply the path to a directory with `--input-dir`. This should contain all
@@ -13,14 +21,15 @@ snapshot files you're interested, including Crossref and/or DataCite files. It
 will be scanned recursively, and files with unrecognised extensions will be
 skipped.
 
-The tool expects files with extensions:
+The tool can accept files with extensions:
 
  - `*.json.gz` (Crossref)
  - `*.tgz` (DataCite)
+ - `*.jsonl.gz` - Output from this tool.
 
-## Installation
+## Output
 
-Run `cargo build --release`. The binary is available in the `./target/release` directory.
+This tool can combine many files into one file. By supplying the `--out-format ".jsonl.gz" --out <filename>` you can combine all the data in the snapshot input directory into one file.
 
 ## Functionality
 
@@ -48,11 +57,28 @@ Count how many metadata records are present across snapshots.
 
 ## Limitations
 
-The Crossref zipped JSON files are currently buffered into memory, meaning ~20MB sized allocations. The initial parsing is therefore quite memory-intensive.
+Crossref zipped JSON files are large chunks of API pages. They are currently buffered into memory and parsed. The initial parsing from Crossref format is therefore quite memory-intensive.
 
-When reading a DataCite snapshot typical memory use is 75MB.
+All functions will work from all input formats, but converting to `.jsonl.gz` first will give a speedup for further operations.
 
-When reading the Crossref snapshot the typical memory use is 300 MB.
+DataCite snapshot:
+ - retrieved 2024
+ - typical memory use is around 80MB
+ - read 52,863,283 records
+ - duration to parse and count all records 36.24 minutes (24,311 records per second)
+
+Crossref snapshot:
+ - retrieved 2024
+ - typical memory use is around 300 MB
+ - read 158,004,152 records
+ - duration to count all records is 346 minutes (7,610 records per second)
+
+Combined snapshot in `.jsonl.gz` format:
+ - typical memory use is XX MB
+  - duration to count all records is XX minutes
+ - read XX records
+
+Benchmarks on Intel Core i7-7700 4x Sky Lake with 64 GB RAM. 7200 RPM HDD.
 
 ## License
 
