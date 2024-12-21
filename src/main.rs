@@ -1,3 +1,4 @@
+mod metadata;
 mod read;
 mod write;
 
@@ -9,6 +10,7 @@ use std::{
     thread,
 };
 
+use metadata::get_doi_from_record;
 use read::read_paths_to_channel;
 use serde_json::Value;
 use structopt::StructOpt;
@@ -33,8 +35,8 @@ struct Options {
     )]
     input_dir: Option<PathBuf>,
 
-    #[structopt(long, help("Count all metadata records in snapshot files."))]
-    count_records: bool,
+    #[structopt(long, help("Return stats for the snapshot files. Including count of records, total and average size of JSON, total and average size of DOIs."))]
+    stats: bool,
 
     #[structopt(long, short = "v", help("Send progress messages to STDERR."))]
     verbose: bool,
@@ -42,9 +44,12 @@ struct Options {
     #[structopt(
         long,
         short = "o",
-        help("Save to output file. Only .jsonl.gz currently supported.")
+        help("Save to output file, combining all inputs. Only .jsonl.gz currently supported.")
     )]
     output_file: Option<PathBuf>,
+
+    #[structopt(long, help("Print list of DOIs for all records to STDOUT."))]
+    print_dois: bool,
 }
 
 fn main() {
@@ -68,8 +73,12 @@ fn main_r() -> anyhow::Result<()> {
         main_list_files(&options)?;
     }
 
-    if options.count_records {
-        main_count_records(&options)?;
+    if options.stats {
+        main_stats(&options)?;
+    }
+
+    if options.print_dois {
+        main_print_dois(&options)?;
     }
 
     if let Some(ref output_file) = options.output_file {
@@ -85,11 +94,11 @@ fn main_list_files(options: &Options) -> Result<(), anyhow::Error> {
         if let Some(path_str) = path.to_str() {
             println!("{}", path_str)
         }
-    };
+    }
     Ok(())
 }
 
-fn main_count_records(options: &Options) -> Result<(), anyhow::Error> {
+fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
     let verbose = options.verbose;
     let (_, paths) = expect_input_files(options)?;
     let (tx, rx): (SyncSender<Value>, Receiver<Value>) = mpsc::sync_channel(10);
@@ -99,10 +108,46 @@ fn main_count_records(options: &Options) -> Result<(), anyhow::Error> {
         }
     });
     let mut count: usize = 0;
-    for _ in rx.iter() {
+    let mut total_json_size: usize = 0;
+    let mut total_doi_size: usize = 0;
+    for record in rx.iter() {
         count += 1;
+        total_json_size += record.to_string().len();
+        total_doi_size += get_doi_from_record(&record)
+            .and_then(|x| Some(x.len()))
+            .unwrap_or(0 as usize);
     }
-    println!("{count}");
+    println!("Count: {count}");
+    println!("Total JSON bytes: {total_json_size}");
+
+    let average_json_size = (total_json_size as f32) / (count as f32);
+    println!("Average JSON bytes: {average_json_size}");
+
+    println!("Total DOI bytes: {total_doi_size}");
+
+    let average_doi_size = (total_json_size as f32) / (count as f32);
+    println!("Average DOI bytes: {average_doi_size}");
+
+    read_thread
+        .join()
+        .unwrap_or_else(|err| eprintln!("Failed to join reader thread: {:?}", err));
+    Ok(())
+}
+
+fn main_print_dois(options: &Options) -> Result<(), anyhow::Error> {
+    let verbose = options.verbose;
+    let (_, paths) = expect_input_files(options)?;
+    let (tx, rx): (SyncSender<Value>, Receiver<Value>) = mpsc::sync_channel(10);
+    let read_thread = thread::spawn(move || {
+        if let Err(err) = read_paths_to_channel(&paths, tx, verbose) {
+            eprintln!("Failed read archives: {:?}", err);
+        }
+    });
+    for rec in rx.iter() {
+        if let Some(doi) = get_doi_from_record(&rec) {
+            println!("{}", doi);
+        }
+    }
     read_thread
         .join()
         .unwrap_or_else(|err| eprintln!("Failed to join reader thread: {:?}", err));
