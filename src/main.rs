@@ -116,6 +116,10 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
     for record in rx.iter() {
         count += 1;
 
+        if verbose && count % 10000 == 0 {
+            eprintln!("Read {} lines", count);
+        }
+
         let json_size = record.to_string().len();
         total_json_size += json_size;
 
