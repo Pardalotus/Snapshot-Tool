@@ -3,6 +3,7 @@ mod read;
 mod write;
 
 use std::{
+    collections::BTreeMap,
     fs::{self},
     path::PathBuf,
     process::exit,
@@ -110,23 +111,50 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
     let mut count: usize = 0;
     let mut total_json_size: usize = 0;
     let mut total_doi_size: usize = 0;
+    let mut doi_length_frequencies = BTreeMap::<usize, usize>::new();
+    let mut json_length_frequencies = BTreeMap::<usize, usize>::new();
     for record in rx.iter() {
         count += 1;
-        total_json_size += record.to_string().len();
-        total_doi_size += get_doi_from_record(&record)
+
+        let json_size = record.to_string().len();
+        total_json_size += json_size;
+
+        // Integer division to bucket into 1kb buckets.
+        let json_bucketed = (json_size / 1024) * 1024;
+        *json_length_frequencies.entry(json_bucketed).or_insert(0) += 1;
+
+        let doi_size = get_doi_from_record(&record)
             .and_then(|x| Some(x.len()))
             .unwrap_or(0 as usize);
+
+        total_doi_size += doi_size;
+        *doi_length_frequencies.entry(doi_size).or_insert(0) += 1;
     }
-    println!("Count: {count}");
-    println!("Total JSON bytes: {total_json_size}");
 
     let average_json_size = (total_json_size as f32) / (count as f32);
-    println!("Average JSON bytes: {average_json_size}");
-
-    println!("Total DOI bytes: {total_doi_size}");
-
     let average_doi_size = (total_json_size as f32) / (count as f32);
+
+    println!("Record count: {count}");
+    println!("Total JSON bytes: {total_json_size}");
+    println!("Average JSON bytes: {average_json_size}");
+    println!("Total DOI bytes: {total_doi_size}");
     println!("Average DOI bytes: {average_doi_size}");
+
+    println!("");
+    println!("");
+    println!("JSON length frequencies (bins of 1KiB):");
+
+    for (length, frequency) in json_length_frequencies.into_iter() {
+        println!("{length},{frequency}");
+    }
+    println!("");
+    println!("");
+
+    println!("DOI length frequencies:");
+
+    for (length, frequency) in doi_length_frequencies.into_iter() {
+        println!("{length},{frequency}");
+    }
 
     read_thread
         .join()
