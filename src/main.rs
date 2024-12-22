@@ -39,6 +39,12 @@ struct Options {
     #[structopt(long, help("Return stats for the snapshot files. Including count of records, total and mean size of JSON, total and mean size of DOIs."))]
     stats: bool,
 
+    #[structopt(
+        long,
+        help("Generate a CSV of Unicode Character, Code point, Frequency for DOIs.")
+    )]
+    doi_unicode_distribution: bool,
+
     #[structopt(long, short = "v", help("Send progress messages to STDERR."))]
     verbose: bool,
 
@@ -80,6 +86,10 @@ fn main_r() -> anyhow::Result<()> {
 
     if options.print_dois {
         main_print_dois(&options)?;
+    }
+
+    if options.doi_unicode_distribution {
+        main_unicode_distribution(&options)?;
     }
 
     if let Some(ref output_file) = options.output_file {
@@ -217,6 +227,44 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
     read_thread
         .join()
         .unwrap_or_else(|err| eprintln!("Failed to join reader thread: {:?}", err));
+    Ok(())
+}
+
+fn main_unicode_distribution(options: &Options) -> Result<(), anyhow::Error> {
+    let verbose = options.verbose;
+    let (_, paths) = expect_input_files(options)?;
+    let (tx, rx): (SyncSender<Value>, Receiver<Value>) = mpsc::sync_channel(10);
+    let read_thread = thread::spawn(move || {
+        if let Err(err) = read_paths_to_channel(&paths, tx, verbose) {
+            eprintln!("Failed read archives: {:?}", err);
+        }
+    });
+    let mut count: usize = 0;
+
+    let mut doi_chars_frequencies = BTreeMap::<char, usize>::new();
+
+    for record in rx.iter() {
+        count += 1;
+
+        if verbose && count % 10000 == 0 {
+            eprintln!("Read {} lines", count);
+        }
+
+        if let Some(doi) = get_doi_from_record(&record) {
+            for char in doi.chars() {
+                *doi_chars_frequencies.entry(char).or_insert(0) += 1;
+            }
+        }
+    }
+
+    read_thread
+        .join()
+        .unwrap_or_else(|err| eprintln!("Failed to join reader thread: {:?}", err));
+
+    for (chr, frequency) in doi_chars_frequencies.into_iter() {
+        println!("\"{}\",{},{}", chr, chr as u32, frequency);
+    }
+
     Ok(())
 }
 
