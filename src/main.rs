@@ -27,14 +27,14 @@ struct Options {
     version: bool,
 
     #[structopt(long, help("List all snapshot files found in the input directory."))]
-    list_files: bool,
+    list_input_files: bool,
 
     #[structopt(
         long,
         parse(from_os_str),
         help("Input directory containing snapshot files.")
     )]
-    input_dir: Option<PathBuf>,
+    input: Option<PathBuf>,
 
     #[structopt(long, help("Return stats for the snapshot files. Including count of records, total and average size of JSON, total and average size of DOIs."))]
     stats: bool,
@@ -70,8 +70,8 @@ fn main_r() -> anyhow::Result<()> {
         println!("Version {}", VERSION);
     }
 
-    if options.list_files {
-        main_list_files(&options)?;
+    if options.list_input_files {
+        main_list_input_files(&options)?;
     }
 
     if options.stats {
@@ -89,7 +89,7 @@ fn main_r() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main_list_files(options: &Options) -> Result<(), anyhow::Error> {
+fn main_list_input_files(options: &Options) -> Result<(), anyhow::Error> {
     let (_, paths) = expect_input_files(options)?;
     for path in paths {
         if let Some(path_str) = path.to_str() {
@@ -109,10 +109,13 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
         }
     });
     let mut count: usize = 0;
-    let mut total_json_size: usize = 0;
-    let mut total_doi_size: usize = 0;
-    let mut doi_length_frequencies = BTreeMap::<usize, usize>::new();
-    let mut json_length_frequencies = BTreeMap::<usize, usize>::new();
+
+    let mut total_json_chars: usize = 0;
+    let mut total_doi_bytes: usize = 0;
+    let mut total_doi_chars: usize = 0;
+    let mut doi_chars_frequencies = BTreeMap::<usize, usize>::new();
+    let mut doi_bytes_frequencies = BTreeMap::<usize, usize>::new();
+    let mut json_chars_frequencies = BTreeMap::<usize, usize>::new();
     for record in rx.iter() {
         count += 1;
 
@@ -120,43 +123,59 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
             eprintln!("Read {} lines", count);
         }
 
-        let json_size = record.to_string().len();
-        total_json_size += json_size;
+        let json_chars = record.to_string().len();
+        total_json_chars += json_chars;
 
         // Integer division to bucket into 1kb buckets.
-        let json_bucketed = (json_size / 1024) * 1024;
-        *json_length_frequencies.entry(json_bucketed).or_insert(0) += 1;
+        let json_chars_bucketed = (json_chars / 1024) * 1024;
+        *json_chars_frequencies
+            .entry(json_chars_bucketed)
+            .or_insert(0) += 1;
 
-        let doi_size = get_doi_from_record(&record)
-            .and_then(|x| Some(x.len()))
-            .unwrap_or(0 as usize);
+        if let Some(doi) = get_doi_from_record(&record) {
+            let doi_chars = doi.len();
+            let doi_bytes = doi.as_bytes().len();
 
-        total_doi_size += doi_size;
-        *doi_length_frequencies.entry(doi_size).or_insert(0) += 1;
+            total_doi_chars += doi_chars;
+            *doi_chars_frequencies.entry(doi_chars).or_insert(0) += 1;
+
+            total_doi_bytes += doi_bytes;
+            *doi_bytes_frequencies.entry(doi_chars).or_insert(0) += 1;
+        }
     }
 
-    let average_json_size = (total_json_size as f32) / (count as f32);
-    let average_doi_size = (total_json_size as f32) / (count as f32);
+    let average_json_chars = (total_json_chars as f32) / (count as f32);
+    let average_doi_chars = (total_doi_chars as f32) / (count as f32);
+    let average_doi_bytes = (total_doi_bytes as f32) / (count as f32);
 
     println!("Record count: {count}");
-    println!("Total JSON bytes: {total_json_size}");
-    println!("Average JSON bytes: {average_json_size}");
-    println!("Total DOI bytes: {total_doi_size}");
-    println!("Average DOI bytes: {average_doi_size}");
+    println!("");
+    println!("JSON:");
+    println!("Total JSON chars: {total_json_chars}");
+    println!("Average JSON chars: {average_json_chars}");
 
     println!("");
+    println!("DOIs:");
+    println!("Total DOI chars: {total_doi_chars}");
+    println!("Average DOI chars: {average_doi_chars}");
     println!("");
-    println!("JSON length frequencies (bins of 1KiB):");
 
-    for (length, frequency) in json_length_frequencies.into_iter() {
+    println!("Total DOI bytes: {total_doi_bytes}");
+    println!("Average DOI chas: {average_doi_bytes}");
+
+    println!("");
+    println!("Frequencies:");
+    println!("JSON chars frequencies (bins of 1KiB):");
+
+    for (length, frequency) in json_chars_frequencies.into_iter() {
         println!("{length},{frequency}");
     }
     println!("");
     println!("");
 
-    println!("DOI length frequencies:");
+    println!("DOI chars frequencies:");
 
-    for (length, frequency) in doi_length_frequencies.into_iter() {
+    for (length, frequency) in doi_chars_frequencies.into_iter() {
         println!("{length},{frequency}");
     }
 
@@ -212,7 +231,7 @@ fn main_output_file(options: &Options, output_file: &PathBuf) -> Result<(), anyh
 /// Return the input directory and a list of input files recursively found there.
 /// Error if no option supplied.
 fn expect_input_files(options: &Options) -> anyhow::Result<(PathBuf, Vec<PathBuf>)> {
-    if let Some(ref input_dir) = options.input_dir {
+    if let Some(ref input_dir) = options.input {
         let files = find_input_files(input_dir)?;
         Ok((input_dir.clone(), files))
     } else {
