@@ -135,8 +135,10 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
             .or_insert(0) += 1;
 
         if let Some(doi) = get_doi_from_record(&record) {
-            let doi_chars = doi.len();
-            let doi_bytes = doi.as_bytes().len();
+            let doi_chars = doi.chars().count();
+
+            // String::len() measures bytes not chars.
+            let doi_bytes = doi.len();
 
             if let Some(this_max_doi_codepoint) = doi.chars().max() {
                 max_doi_codepoint = this_max_doi_codepoint.max(max_doi_codepoint);
@@ -146,7 +148,7 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
             *doi_chars_frequencies.entry(doi_chars).or_insert(0) += 1;
 
             total_doi_bytes += doi_bytes;
-            *doi_bytes_frequencies.entry(doi_chars).or_insert(0) += 1;
+            *doi_bytes_frequencies.entry(doi_bytes).or_insert(0) += 1;
         }
     }
 
