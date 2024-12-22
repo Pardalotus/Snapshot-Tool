@@ -36,7 +36,7 @@ struct Options {
     )]
     input: Option<PathBuf>,
 
-    #[structopt(long, help("Return stats for the snapshot files. Including count of records, total and average size of JSON, total and average size of DOIs."))]
+    #[structopt(long, help("Return stats for the snapshot files. Including count of records, total and mean size of JSON, total and mean size of DOIs."))]
     stats: bool,
 
     #[structopt(long, short = "v", help("Send progress messages to STDERR."))]
@@ -116,6 +116,8 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
     let mut doi_chars_frequencies = BTreeMap::<usize, usize>::new();
     let mut doi_bytes_frequencies = BTreeMap::<usize, usize>::new();
     let mut json_chars_frequencies = BTreeMap::<usize, usize>::new();
+    let mut max_doi_codepoint: char = '\0';
+
     for record in rx.iter() {
         count += 1;
 
@@ -136,6 +138,10 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
             let doi_chars = doi.len();
             let doi_bytes = doi.as_bytes().len();
 
+            if let Some(this_max_doi_codepoint) = doi.chars().max() {
+                max_doi_codepoint = this_max_doi_codepoint.max(max_doi_codepoint);
+            }
+
             total_doi_chars += doi_chars;
             *doi_chars_frequencies.entry(doi_chars).or_insert(0) += 1;
 
@@ -144,24 +150,51 @@ fn main_stats(options: &Options) -> Result<(), anyhow::Error> {
         }
     }
 
-    let average_json_chars = (total_json_chars as f32) / (count as f32);
-    let average_doi_chars = (total_doi_chars as f32) / (count as f32);
-    let average_doi_bytes = (total_doi_bytes as f32) / (count as f32);
+    let mean_json_chars = (total_json_chars as f32) / (count as f32);
+    let mean_doi_chars = (total_doi_chars as f32) / (count as f32);
+    let mean_doi_bytes = (total_doi_bytes as f32) / (count as f32);
+
+    let mode_doi_chars = doi_chars_frequencies
+        .iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(value, _)| value)
+        .unwrap_or(&0);
+
+    let mode_doi_bytes = doi_bytes_frequencies
+        .iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(value, _)| value)
+        .unwrap_or(&0);
+
+    let mode_json_chars = json_chars_frequencies
+        .iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(value, _)| value)
+        .unwrap_or(&0);
 
     println!("Record count: {count}");
     println!("");
     println!("JSON:");
     println!("Total JSON chars: {total_json_chars}");
-    println!("Average JSON chars: {average_json_chars}");
+    println!("Mean JSON chars: {mean_json_chars}");
+    println!("Modal JSON chars: {mode_json_chars}");
 
     println!("");
     println!("DOIs:");
     println!("Total DOI chars: {total_doi_chars}");
-    println!("Average DOI chars: {average_doi_chars}");
+    println!("Mean DOI chars: {mean_doi_chars}");
+    println!("Modal DOI chars: {mode_doi_chars}");
+
     println!("");
 
     println!("Total DOI bytes: {total_doi_bytes}");
-    println!("Average DOI chas: {average_doi_bytes}");
+    println!("Mean DOI bytes: {mean_doi_bytes}");
+    println!("Modal DOI bytes: {mode_doi_bytes}");
+
+    println!(
+        "Max Unicode code point: {} : {}",
+        max_doi_codepoint, max_doi_codepoint as u32
+    );
 
     println!("");
     println!("Frequencies:");
